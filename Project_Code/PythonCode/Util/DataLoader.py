@@ -2,6 +2,8 @@ import pandas as pd
 import pickle
 from pathlib import Path
 from sklearn.model_selection import train_test_split
+import shutil
+
 
 
 class DataLoader:
@@ -58,24 +60,39 @@ class DataLoader:
                 "Missing dependency 'kagglehub'. Install it with: pip install kagglehub[pandas-datasets]"
             ) from exc
 
+        # Strategy 1: Load directly as pandas using a concrete filename with extension.
+        # We use the local target filename as the requested remote file.
         try:
-            # Empty file_path lets KaggleHub resolve the default dataset file.
             downloaded_df = kagglehub.load_dataset(
                 KaggleDatasetAdapter.PANDAS,
                 self._kaggle_dataset,
-                "",
+                dataset_path.name,  # e.g. flights_sample_3m.csv
             )
+            if downloaded_df is not None and not downloaded_df.empty:
+                downloaded_df.to_csv(dataset_path, index=False)
+                print(f"Dataset downloaded and saved to: {dataset_path}")
+                return
+        except Exception:
+            pass
+
+        # Strategy 2 (fallback): Download dataset files and pick a CSV.
+        try:
+            downloaded_dir = Path(kagglehub.dataset_download(self._kaggle_dataset))
+            csv_files = list(downloaded_dir.rglob("*.csv"))
+            if not csv_files:
+                raise RuntimeError("No CSV files found in downloaded Kaggle dataset folder.")
+
+            # Prefer same filename as local target; otherwise pick the largest CSV.
+            same_name = [p for p in csv_files if p.name.lower() == dataset_path.name.lower()]
+            source_csv = same_name[0] if same_name else max(csv_files, key=lambda p: p.stat().st_size)
+
+            shutil.copy2(source_csv, dataset_path)
+            print(f"Dataset downloaded from {source_csv.name} and saved to: {dataset_path}")
         except Exception as exc:
             raise RuntimeError(
                 "Failed to download dataset from KaggleHub. "
-                "Make sure Kaggle access is configured and internet is available."
+                "Check Kaggle credentials/access and internet connection."
             ) from exc
-
-        if downloaded_df is None or downloaded_df.empty:
-            raise RuntimeError("KaggleHub returned an empty dataset; CSV was not created.")
-
-        downloaded_df.to_csv(dataset_path, index=False)
-        print(f"Dataset downloaded and saved to: {dataset_path}")
 
     def load_data(self, nrows=None, target_column='ARR_DELAY'):
         """
