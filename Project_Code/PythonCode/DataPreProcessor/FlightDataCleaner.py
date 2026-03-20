@@ -1,55 +1,204 @@
 import pandas as pd
 import numpy as np
+from typing import Union
 
 
 class FlightDataCleaner:
-    """
-    Classe responsável pelo carregamento e limpeza inicial dos dados dos voos.
-    """
+    """Single cleaner class supporting both DataFrame and file-path entrypoints."""
 
-    def __init__(self, file_path):
+    def __init__(self, df: pd.DataFrame = None, file_path: str = None):
+        # Backward compatibility: allow FlightDataCleaner_IA("path/to/file.csv").
+        if isinstance(df, str) and file_path is None:
+            file_path = df
+            df = None
+
         self.file_path = file_path
-        self.data = None
+        self.original_shape = None
 
-    def load_and_clean(self):
-        print("A carregar os dados...")
-        self.data = pd.read_csv(self.file_path)
+        if df is not None and not isinstance(df, pd.DataFrame):
+            raise ValueError("df must be a pandas DataFrame")
 
-        # 1. Remover voos cancelados e desviados [cite: 197]
-        self.data = self.data[(self.data['CANCELLED'] == 0) & (self.data['DIVERTED'] == 0)]
+        if df is not None:
+            self.df = df.copy()
+        else:
+            self.df = pd.DataFrame()
 
-        # 2. Remover Data Leakage (colunas proibidas) [cite: 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197]
+        # Keep `data` for backward compatibility with existing code.
+        self.data = self.df
+
+    def fill_missing(
+        self,
+        strategy: str = "mean",
+        value: Union[int, float, str, None] = None,
+    ) -> None:
+        """Fill missing values using mean, median, mode, or constant value."""
+        valid_strategies = ["mean", "median", "mode", "constant"]
+        if strategy not in valid_strategies:
+            raise ValueError("Strategy must be one of 'mean', 'median', 'mode', or 'constant'")
+
+        if strategy == "mean":
+            numeric_cols = self.df.select_dtypes(include=[np.number]).columns
+            self.df[numeric_cols] = self.df[numeric_cols].fillna(self.df[numeric_cols].mean())
+        elif strategy == "median":
+            numeric_cols = self.df.select_dtypes(include=[np.number]).columns
+            self.df[numeric_cols] = self.df[numeric_cols].fillna(self.df[numeric_cols].median())
+        elif strategy == "mode":
+            for col in self.df.columns:
+                mode_val = self.df[col].mode()
+                if not mode_val.empty:
+                    self.df[col] = self.df[col].fillna(mode_val.iloc[0])
+        else:
+            if value is None:
+                raise ValueError("Must provide a value for constant filling")
+            self.df = self.df.fillna(value)
+
+    def handle_missing_values(
+        self,
+        method: str = "drop",
+        fill_value: Union[int, float, str, None] = None,
+    ) -> None:
+        """Handle missing values by dropping rows or filling with a constant."""
+        if method not in ["drop", "fill"]:
+            raise ValueError("Method must be 'drop' or 'fill'")
+
+        if method == "drop":
+            self.df = self.df.dropna()
+        else:
+            if fill_value is None:
+                raise ValueError("fill_value must be provided when method='fill'")
+            self.df = self.df.fillna(fill_value)
+
+    @staticmethod
+    def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
+        return df.drop_duplicates()
+
+    def remove_cancelled_diverted(self) -> pd.DataFrame:
+        self.df = self.df[(self.df["CANCELLED"] == 0) & (self.df["DIVERTED"] == 0)]
+        self.data = self.df
+        return self.df
+
+    def remove_data_leak_cols(self) -> None:
         leakage_cols = [
-            'DEP_DELAY', 'DELAY_DUE_CARRIER', 'DELAY_DUE_WEATHER', 'DELAY_DUE_NAS',
-            'DELAY_DUE_SECURITY', 'DELAY_DUE_LATE_AIRCRAFT', 'ARR_TIME', 'DEP_TIME',
-            'WHEELS_OFF', 'WHEELS_ON', 'TAXI_OUT', 'TAXI_IN', 'ELAPSED_TIME', 'AIR_TIME',
-            'CANCELLED', 'CANCELLATION_CODE', 'DIVERTED'
+            "DEP_DELAY",
+            "DELAY_DUE_CARRIER",
+            "DELAY_DUE_WEATHER",
+            "DELAY_DUE_NAS",
+            "DELAY_DUE_SECURITY",
+            "DELAY_DUE_LATE_AIRCRAFT",
+            "ARR_TIME",
+            "DEP_TIME",
+            "WHEELS_OFF",
+            "WHEELS_ON",
+            "TAXI_OUT",
+            "TAXI_IN",
+            "ELAPSED_TIME",
+            "AIR_TIME",
+            "CANCELLED",
+            "CANCELLATION_CODE",
+            "DIVERTED",
         ]
-        self.data = self.data.drop(columns=leakage_cols, errors='ignore')
+        self.df = self.df.drop(columns=leakage_cols, errors="ignore")
+        self.data = self.df
 
-        # 3. Remover Nulos na Variável Alvo [cite: 184]
-        self.data = self.data.dropna(subset=['ARR_DELAY'])
+    def save(self, filename: str) -> None:
+        """Save current dataframe as CSV or XLSX."""
+        if filename.endswith(".csv"):
+            self.df.to_csv(filename, index=False)
+        elif filename.endswith(".xlsx"):
+            self.df.to_excel(filename, index=False)
+        else:
+            raise ValueError("Unsupported file format. Use .csv or .xlsx")
 
-        self._handle_outliers_and_nans()
-        print("Limpeza concluída! Dimensão atual:", self.data.shape)
-        return self.data
+    def _handle_outliers_and_nans(self) -> None:
+        """Treat outliers via IQR and impute resulting numeric NaNs with mean."""
+        cols_for_outliers = ["DISTANCE", "CRS_ELAPSED_TIME"]
 
-    def _handle_outliers_and_nans(self):
-        """Método privado para tratar outliers usando IQR nas features contínuas."""
-        cols_for_outliers = ['DISTANCE', 'CRS_ELAPSED_TIME']
         for col in cols_for_outliers:
-            if col in self.data.columns:
-                Q1 = self.data[col].quantile(0.25)
-                Q3 = self.data[col].quantile(0.75)
-                IQR = Q3 - Q1
-                lower_bound = Q1 - 1.5 * IQR
-                upper_bound = Q3 + 1.5 * IQR
+            if col in self.df.columns:
+                q1 = self.df[col].quantile(0.25)
+                q3 = self.df[col].quantile(0.75)
+                iqr = q3 - q1
+                lower_bound = q1 - 1.5 * iqr
+                upper_bound = q3 + 1.5 * iqr
 
-                # Substituir outliers por NaN
-                self.data[col] = np.where(
-                    (self.data[col] < lower_bound) | (self.data[col] > upper_bound),
+                outliers_count = ((self.df[col] < lower_bound) | (self.df[col] > upper_bound)).sum()
+
+                self.df[col] = np.where(
+                    (self.df[col] < lower_bound) | (self.df[col] > upper_bound),
                     np.nan,
-                    self.data[col]
+                    self.df[col],
                 )
-                # Imputar NaNs com a média
-                self.data[col] = self.data[col].fillna(self.data[col].mean())
+
+                self.df[col] = self.df[col].fillna(self.df[col].mean())
+                print(f"   ✓ {col}: {outliers_count} outliers tratados")
+
+        numeric_cols = self.df.select_dtypes(include=[np.number]).columns
+        missing_count = self.df[numeric_cols].isnull().sum().sum()
+
+        if missing_count > 0:
+            for col in numeric_cols:
+                self.df[col] = self.df[col].fillna(self.df[col].mean())
+            print(f"   ✓ {missing_count} missing values imputados (média)")
+        else:
+            print("   ✓ Nenhum missing value encontrado")
+        self.data = self.df
+
+    def load_and_clean(self, nrows=None):
+        """Load CSV and execute the standardized flight cleaning pipeline."""
+        print("=" * 60)
+        print("INICIANDO PROCESSO DE LIMPEZA DE DADOS")
+        print("=" * 60)
+
+        if self.df.empty:
+            if not self.file_path:
+                raise ValueError("Provide file_path or initialize with a non-empty DataFrame")
+            print("\n1. A carregar os dados...")
+            self.df = pd.read_csv(self.file_path, nrows=nrows)
+        else:
+            print("\n1. A usar DataFrame fornecido no construtor...")
+
+        self.data = self.df
+        self.original_shape = self.df.shape
+        print(f"   ✓ Dataset carregado: {self.original_shape[0]} linhas × {self.original_shape[1]} colunas")
+
+        print("\n2. A remover voos cancelados e desviados...")
+        initial_rows = len(self.df)
+        self.remove_cancelled_diverted()
+        self.data = self.df
+        removed = initial_rows - len(self.df)
+        print(f"   ✓ Removidos {removed} voos (cancelados/desviados)")
+
+        print("\n3. A remover colunas com data leakage...")
+        cols_before = self.df.shape[1]
+        self.remove_data_leak_cols()
+        self.data = self.df
+        print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas com data leakage")
+
+        print("\n4. A remover nulos na variável alvo...")
+        initial_rows = len(self.df)
+        self.df = self.df.dropna(subset=["ARR_DELAY"])
+        self.data = self.df
+        removed = initial_rows - len(self.df)
+        print(f"   ✓ Removidas {removed} linhas com ARR_DELAY nulo")
+
+        print("\n5. A tratar outliers e missing values...")
+        self._handle_outliers_and_nans()
+        self.data = self.df
+
+        print("\n6. A remover colunas redundantes...")
+        redundant_cols = ["FL_NUMBER", "ORIGIN_CITY", "DEST_CITY", "AIRLINE_DOT", "DOT_CODE"]
+        cols_before = self.df.shape[1]
+        self.df = self.df.drop(columns=redundant_cols, errors="ignore")
+        self.data = self.df
+        print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas redundantes")
+
+        print("\n" + "=" * 60)
+        print("LIMPEZA CONCLUÍDA!")
+        print(f"Dimensão final: {self.df.shape[0]} linhas × {self.df.shape[1]} colunas")
+        print(
+            f"Redução: {self.original_shape[0] - self.df.shape[0]} linhas removidas "
+            f"({100 * (self.original_shape[0] - self.df.shape[0]) / self.original_shape[0]:.1f}%)"
+        )
+        print("=" * 60 + "\n")
+
+        return self.df
