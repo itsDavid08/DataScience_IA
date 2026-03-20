@@ -30,11 +30,37 @@ class DataVisualization:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        self._apply_global_style()
+
         detected_numeric = data.select_dtypes(include=[np.number]).columns.tolist()
         self.numeric_cols = numeric_cols if numeric_cols is not None else detected_numeric
 
         self._default_dpi = 100
         self._default_grid_cols = 3
+
+    def _apply_global_style(self):
+        """Apply a readable plotting style that remains clear in IDE dark themes."""
+        sns.set_theme(style='whitegrid', palette='muted')
+        plt.rcParams['figure.facecolor'] = 'white'
+        plt.rcParams['figure.edgecolor'] = 'white'
+        plt.rcParams['axes.facecolor'] = 'white'
+        plt.rcParams['savefig.facecolor'] = 'white'
+        plt.rcParams['savefig.edgecolor'] = 'white'
+        plt.rcParams['savefig.transparent'] = False
+        plt.rcParams['axes.edgecolor'] = '#333333'
+        plt.rcParams['axes.labelcolor'] = '#222222'
+        plt.rcParams['xtick.color'] = '#222222'
+        plt.rcParams['ytick.color'] = '#222222'
+        plt.rcParams['text.color'] = '#222222'
+        plt.rcParams['grid.color'] = '#D0D0D0'
+        plt.rcParams['grid.alpha'] = 0.6
+
+    def _force_white_background(self, fig=None):
+        """Force white figure/axes backgrounds to avoid dark-theme bleed-through."""
+        fig = fig or plt.gcf()
+        fig.patch.set_facecolor('white')
+        for ax in fig.axes:
+            ax.set_facecolor('white')
 
     def _resolve_columns(self, columns=None, default_limit=None, exclude=None):
         """Resolve plot columns from defaults/user input and keep only valid dataframe columns."""
@@ -67,8 +93,16 @@ class DataVisualization:
 
     def _save_show(self, filename, success_message=None):
         """Apply layout, save figure, show figure, and optionally print a success message."""
+        self._force_white_background()
         plt.tight_layout()
-        plt.savefig(self.output_dir / filename, dpi=self._default_dpi, bbox_inches='tight')
+        plt.savefig(
+            self.output_dir / filename,
+            dpi=self._default_dpi,
+            bbox_inches='tight',
+            facecolor='white',
+            edgecolor='white',
+            transparent=False,
+        )
         plt.show()
         if success_message:
             print(success_message)
@@ -186,7 +220,15 @@ class DataVisualization:
         pair_grid = sns.pairplot(data_subset, diag_kind='kde')
         pair_grid.figure.suptitle("Feature Pairplot", y=1.001)
         pair_grid.figure.tight_layout()
-        pair_grid.figure.savefig(self.output_dir / filename, dpi=self._default_dpi, bbox_inches='tight')
+        self._force_white_background(pair_grid.figure)
+        pair_grid.figure.savefig(
+            self.output_dir / filename,
+            dpi=self._default_dpi,
+            bbox_inches='tight',
+            facecolor='white',
+            edgecolor='white',
+            transparent=False,
+        )
         plt.show()
         print(f"[OK] Pairplot saved: {filename}")
 
@@ -338,8 +380,16 @@ class DataVisualization:
         axes[1].set_title(f'Boxplot of {self.target_col}')
         axes[1].set_ylabel(self.target_col)
 
+        self._force_white_background(fig)
         plt.tight_layout()
-        plt.savefig(self.output_dir / filename, dpi=100, bbox_inches='tight')
+        plt.savefig(
+            self.output_dir / filename,
+            dpi=100,
+            bbox_inches='tight',
+            facecolor='white',
+            edgecolor='white',
+            transparent=False,
+        )
         plt.show()
         print(f"[OK] Target distribution saved: {filename}")
 
@@ -367,8 +417,16 @@ class DataVisualization:
         plt.title(f'2D {method_name} Projection')
         plt.colorbar(scatter, label=self.target_col)
         plt.grid(True, alpha=0.3)
+        self._force_white_background()
         plt.tight_layout()
-        plt.savefig(self.output_dir / filename, dpi=100, bbox_inches='tight')
+        plt.savefig(
+            self.output_dir / filename,
+            dpi=100,
+            bbox_inches='tight',
+            facecolor='white',
+            edgecolor='white',
+            transparent=False,
+        )
         plt.show()
 
     def plot_grouped_feature_distributions(self, columns=None, group_col='DELAY_CLASS', bins=30,
