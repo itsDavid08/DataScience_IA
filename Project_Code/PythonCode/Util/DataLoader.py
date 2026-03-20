@@ -29,6 +29,54 @@ class DataLoader:
         self.target_train = None
         self.target_test = None
 
+        # Kaggle dataset source used when local CSV is missing.
+        self._kaggle_dataset = "patrickzel/flight-delay-and-cancellation-dataset-2019-2023"
+
+    def _resolve_dataset_path(self):
+        """Resolve dataset path relative to project root when needed."""
+        dataset_path = Path(self.file_path)
+        if dataset_path.is_absolute():
+            return dataset_path
+
+        project_root = Path(__file__).resolve().parents[3]
+        return project_root / dataset_path
+
+    def _download_dataset_if_missing(self, dataset_path):
+        """Download and persist the dataset if the target CSV does not exist locally."""
+        if dataset_path.exists():
+            return
+
+        print(f"Dataset not found at: {dataset_path}")
+        print("Attempting to download dataset from KaggleHub...")
+        dataset_path.parent.mkdir(parents=True, exist_ok=True)
+
+        try:
+            import kagglehub
+            from kagglehub import KaggleDatasetAdapter
+        except ImportError as exc:
+            raise ImportError(
+                "Missing dependency 'kagglehub'. Install it with: pip install kagglehub[pandas-datasets]"
+            ) from exc
+
+        try:
+            # Empty file_path lets KaggleHub resolve the default dataset file.
+            downloaded_df = kagglehub.load_dataset(
+                KaggleDatasetAdapter.PANDAS,
+                self._kaggle_dataset,
+                "",
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to download dataset from KaggleHub. "
+                "Make sure Kaggle access is configured and internet is available."
+            ) from exc
+
+        if downloaded_df is None or downloaded_df.empty:
+            raise RuntimeError("KaggleHub returned an empty dataset; CSV was not created.")
+
+        downloaded_df.to_csv(dataset_path, index=False)
+        print(f"Dataset downloaded and saved to: {dataset_path}")
+
     def load_data(self, nrows=None, target_column='ARR_DELAY'):
         """
         Carrega o dataset e realiza split train/test aleatório.
@@ -40,8 +88,14 @@ class DataLoader:
         Returns:
             tuple: (data_train, data_test, target_train, target_test)
         """
+        dataset_path = self._resolve_dataset_path()
+        self._download_dataset_if_missing(dataset_path)
+
+        # Keep canonical path after resolution/download.
+        self.file_path = str(dataset_path)
+
         print(f"A carregar o dataset a partir de: {self.file_path}...")
-        self.data = pd.read_csv(self.file_path, nrows=nrows)
+        self.data = pd.read_csv(dataset_path, nrows=nrows)
 
         print(f"Dataset carregado com sucesso!")
         print(f"Dimensão original: {self.data.shape[0]} linhas × {self.data.shape[1]} colunas")
