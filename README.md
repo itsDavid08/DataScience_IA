@@ -1,295 +1,188 @@
-# Data Science Project - Flight Delay Prediction
+# Data Science Project - Flight Delay Analysis and Prediction
 
-## Visão Geral
+## Overview
 
-Este projeto implementa um pipeline completo de análise de dados e machine learning para prever atrasos de voos usando o dataset "Flight Delay and Cancellation Dataset (2019-2023)" do Kaggle.
+This repository implements an end-to-end data pipeline for flight delay analysis using the Kaggle dataset **Flight Delay and Cancellation Dataset (2019-2023)**.
 
-**Status**: Part 1 (Phases 1-3) - Completa ✅
+Current status: **Part 1 complete** (data loading, cleaning, feature engineering, EDA, and hypothesis testing).
 
-## Estrutura do Projeto
+## Project Structure
 
-```
+```text
 DataScience_IA/
-├── DataSet/
-│   └── flights_sample_3m.csv          # Dataset raw (3 milhões de linhas)
-├── Output Files/                       # Artefatos gerados
-├── Project Code/
-│   └── PythonCode/
-│       ├── main.py                     # Pipeline principal (Part 1)
-│       ├── Util/
-│       │   ├── DataLoader_IA.py          # Carga e split de dados
-│       │   ├── DataVisualization_IA.py   # Visualizações
-│       │   └── StatisticalTesting.py  # Testes estatísticos (NOVO)
-│       ├── DataPreProcessor/
-│       │   └── FlightDataCleaner_IA.py   # Limpeza de dados
-│       ├── EDA/
-│       │   └── FlightEDA_IA.py           # Análise exploratória + PCA + UMAP
-│       └── FeatureEngeneering/
-│           └── FlightFeatureEngineer_IA.py # Geração de 20 features (expandido)
-├── requirements.txt                    # Dependências Python (NOVO)
-└── README.md                          # Este arquivo
+|-- DataSet/
+|   |-- checkpoint_cleaned_features.pkl
+|   |-- checkpoint_part1_complete.pkl
+|   |-- cleaned_flight_data.csv
+|   `-- flights_sample_3m.csv
+|-- Output_Files/
+|   |-- eda_boxplots.png
+|   |-- eda_correlation_matrix.png
+|   |-- eda_distributions.png
+|   |-- eda_grouped_boxplots.png
+|   |-- eda_grouped_distributions.png
+|   |-- eda_pca_2d.png
+|   |-- eda_target_distribution.png
+|   |-- eda_umap_2d.png
+|   |-- hypothesis_testing_anova.csv
+|   |-- hypothesis_testing_kruskal_wallis.csv
+|   |-- hypothesis_testing_levene.csv
+|   |-- hypothesis_testing_normality.csv
+|   |-- hypothesis_testing_t_tests.csv
+|   |-- pipeline_part1_notebook.log
+|   |-- viz_grouped_boxplots_delay_class.png
+|   |-- viz_grouped_distributions_delay_class.png
+|   `-- viz_heatmap_top_correlations.png
+|-- Project_Code/
+|   |-- JupyterNotebook/
+|   |   `-- Data_Exploration.ipynb
+|   `-- PythonCode/
+|       |-- main.py
+|       |-- DataPreProcessor/
+|       |   `-- FlightDataCleaner.py
+|       |-- EDA/
+|       |   `-- FlightEDA.py
+|       |-- FeatureEngeneering/
+|       |   `-- FlightFeatureEngineer.py
+|       |-- HypothesisTesting/
+|       |   `-- HypothesisTester.py
+|       `-- Util/
+|           |-- DataLoader.py
+|           `-- DataVisualization.py
+|-- ARCHITECTURE.md
+|-- IMPLEMENTATION_SUMMARY.md
+|-- config.yml
+|-- requirements.txt
+`-- README.md
 ```
 
-## Instalação
+> Note: The folder name `FeatureEngeneering` is intentionally kept as-is to match the current repository structure.
 
-### 1. Instalar Dependências
+## Installation
+
+### 1) Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-**Principais Bibliotecas**:
-- `pandas`, `numpy`: Manipulação de dados
-- `scikit-learn`: Machine learning
-- `matplotlib`, `seaborn`: Visualização
-- `scipy`: Testes estatísticos
-- `umap-learn`: Redução não-linear de dimensionalidade
-- `tensorflow`, `torch`: Deep learning (Part 2)
+### 2) Prepare the dataset
 
-### 2. Preparar Dataset
+1. Download: [Flight Delay and Cancellation Dataset](https://www.kaggle.com/datasets/patrickzel/flight-delay-and-cancellation-dataset-2019-2023/)
+2. Place `flights_sample_3m.csv` in `DataSet/`
 
-1. Baixar o dataset do Kaggle: [Flight Delay and Cancellation Dataset](https://www.kaggle.com/datasets/patrickzel/flight-delay-and-cancellation-dataset-2019-2023/)
-2. Colocar o arquivo `flights_sample_3m.csv` em `DataSet/`
+If the CSV is missing, `DataLoader` can attempt an automatic download using `kagglehub`.
 
-## Part 1: Phases 1-3
+## Main Pipeline (Part 1)
 
-### Phase 1: Problem Formulation
-Define objetivos de análise:
-- **Regressão**: Prever `ARR_DELAY` (minutos exatos)
-- **Classificação**: Classificar atrasos em 3 categorias:
-  - `On-time`: ARR_DELAY < 15 min
-  - `Short delay`: 15 ≤ ARR_DELAY ≤ 30 min
-  - `Long delay`: ARR_DELAY > 30 min
-- **Clustering**: Identificar padrões operacionais (aeroportos/companhias)
+The entry point is `Project_Code/PythonCode/main.py`.
 
-### Phase 2: Data Analysis and Cleansing
+### What the script runs
 
-#### 2.1 Data Loading (`DataLoader_IA.py`)
-```python
-from Util.DataLoader_IA import DataLoader_IA
+1. Dataset loading and optional train/test split (`DataLoader`)
+2. Data cleaning and target class creation (`FlightDataCleaner`)
+3. EDA and dimensionality reduction (`FlightEDA`)
+4. Feature engineering, encoding, and normalization (`FlightFeatureEngineer`)
+5. Hypothesis testing (`HypothesisTester`)
+6. Checkpoint export (`checkpoint_cleaned_features.pkl`, `checkpoint_part1_complete.pkl`)
 
-loader = DataLoader_IA("flights_sample_3m.csv", test_size=0.2, random_state=42)
-data_train, data_test, target_train, target_test = loader.load_data()
-```
+### Run command
 
-**Funcionalidades**:
-- Carregamento em chunks (suporte a `nrows` para testes rápidos)
-- Split train/test aleatório (80/20)
-- Serialização com pickle para checkpoints
-
-#### 2.2 Data Cleansing (`FlightDataCleaner_IA.py`)
-```python
-from DataPreProcessor.FlightDataCleaner_IA import FlightDataCleaner_IA
-
-cleaner = FlightDataCleaner_IA("flights_sample_3m.csv")
-df_clean = cleaner.load_and_clean()
-```
-
-**Etapas de Limpeza**:
-1. ✅ Remove voos cancelados/desviados
-2. ✅ Remove colunas com data leakage (DEP_TIME, ARR_TIME, DELAY_DUE_*, etc.)
-3. ✅ Remove nulos em ARR_DELAY (variável alvo)
-4. ✅ Trata outliers (IQR) em DISTANCE e CRS_ELAPSED_TIME
-5. ✅ Remove colunas redundantes (FL_NUMBER, ORIGIN_CITY, AIRLINE_DOT, etc.)
-
-#### 2.3 Feature Engineering (`FlightFeatureEngineer_IA.py`)
-
-**20 Features Geradas**:
-
-| Categoria | Features | Quantidade |
-|-----------|----------|-----------|
-| Temporal | MONTH, DAY_OF_WEEK, DAY_OF_YEAR, QUARTER, IS_WEEKEND, IS_HOLIDAY_SEASON, DEP_HOUR, MORNING_FLIGHT, AFTERNOON_FLIGHT, NIGHT_FLIGHT | 10 |
-| Rota | ROUTE, ROUTE_FREQUENCY, PLANNED_SPEED_MPM | 3 |
-| Caracterização | DISTANCE_CAT, DURATION_CAT, SPEED_CAT | 3 |
-| Interações | DISTANCE_x_ELAPSED_TIME, DISTANCE_POW2, ELAPSED_TIME_POW2 | 3 |
-| **Targets** | **DELAY_CLASS (On-time, Short delay, Long delay)** | **1** |
-
-```python
-from FeatureEngeneering.FlightFeatureEngineer_IA import FlightFeatureEngineer_IA
-
-engineer = FlightFeatureEngineer_IA(df_clean)
-df_features = engineer.generate_features()
-df_features = engineer.encode_categorical()
-df_features = engineer.normalize_features()  # StandardScaler
-```
-
-### Phase 3: Model Selection & Exploratory Data Analysis
-
-#### 3.1 EDA Exploratória (`FlightEDA_IA.py`)
-```python
-from EDA.FlightEDA_IA import FlightEDA_IA
-
-eda = FlightEDA_IA(df_features, target_col='ARR_DELAY')
-eda.perform_eda()  # Distribuições, correlações, boxplots
-eda.run_pca(n_components=2, explained_variance_threshold=0.8)  # Linear
-eda.run_umap_or_tsne(n_components=2, use_umap=True)  # Não-linear
-```
-
-**Outputs**:
-- `eda_distributions.png`: Histogramas com KDE
-- `eda_correlation_matrix.png`: Matriz de correlação
-- `eda_boxplots.png`: Boxplots para outliers
-- `eda_pca_2d.png`: Projeção PCA
-- `eda_umap_2d.png` ou `eda_tsne_2d.png`: Redução não-linear
-
-#### 3.2 Testes Estatísticos (`StatisticalTesting.py`)
-```python
-from Util.StatisticalTesting import HypothesisTesting
-
-tester = HypothesisTesting(data=df_features, labels=df_features['DELAY_CLASS'])
-report = tester.generate_summary_report()
-# Executa: Normality (Shapiro), ANOVA, Kruskal-Wallis, Levene, t-tests
-```
-
-**Relatórios Gerados**:
-- `hypothesis_testing_normality.csv`
-- `hypothesis_testing_anova.csv`
-- `hypothesis_testing_kruskal_wallis.csv`
-- `hypothesis_testing_levene.csv`
-
-### Executar Pipeline Part 1
+From repository root:
 
 ```bash
-cd "Project Code/PythonCode"
-python main_IA.py
+python Project_Code/PythonCode/main.py
 ```
 
-**Output Esperado**:
-```
-================================================================================
-INICIANDO PIPELINE PART 1 - ANÁLISE DE DADOS DE VOOS
-================================================================================
-...
-[Pipeline Phases]
-- Phase 1: Problem Formulation
-- Phase 2: Data Analysis & Cleansing
-- Phase 3: Model Selection & Hypothesis Testing
-...
-================================================================================
-PIPELINE PART 1 CONCLUÍDO COM SUCESSO!
-================================================================================
+Optional example with custom arguments:
 
-Artefatos gerados em:
-- Output Files/ (plots, relatórios)
-- pipeline_part1.log (log detalhado)
+```bash
+python Project_Code/PythonCode/main.py --nrows 500000 --test-size 0.2 --random-state 42
 ```
+
+## Key Components
+
+### `DataLoader`
+- Loads CSV data.
+- Supports `nrows` for smaller test runs.
+- Performs train/test split.
+- Saves and loads checkpoints.
+
+### `FlightDataCleaner`
+- Removes canceled/diverted flights.
+- Drops null target rows (`ARR_DELAY`).
+- Normalizes negative delays to zero.
+- Balances delayed vs. non-delayed records.
+- Handles outliers and numeric missing values.
+- Adds `DELAY_CLASS` (`On-time`, `Short delay`, `Long delay`).
+
+### `FlightFeatureEngineer`
+Creates engineered features in four groups:
+- Temporal (month, weekday, hour, period flags)
+- Route-level (`ROUTE`, `ROUTE_FREQUENCY`, `PLANNED_SPEED_MPM`)
+- Categorized bins (`DISTANCE_CAT`, `DURATION_CAT`, `SPEED_CAT`)
+- Interaction and polynomial features
+
+Then it label-encodes categorical fields and applies `StandardScaler` to numeric features.
+
+### `FlightEDA`
+- Descriptive and quality diagnostics.
+- Correlation and outlier analysis.
+- Visual outputs (distribution, boxplot, correlation heatmap).
+- PCA and UMAP (or t-SNE fallback).
+
+### `HypothesisTester`
+Generates statistical reports for:
+- Normality (Shapiro)
+- ANOVA
+- Kruskal-Wallis
+- Levene
+- Pairwise t-tests
+
+## Outputs
+
+Main outputs are saved to `Output_Files/`:
+- EDA charts (`eda_*.png`, `viz_*.png`)
+- Statistical CSV reports
+- Pipeline log: `pipeline_part1_notebook.log`
 
 ## Checkpoints
 
-O pipeline salva checkpoints em `Output Files/`:
+The pipeline writes serialized checkpoints to `DataSet/`:
+- `checkpoint_cleaned_features.pkl`
+- `checkpoint_part1_complete.pkl`
+
+Load a checkpoint:
 
 ```python
-# Checkpoint após limpeza e features
-loader.save_checkpoint('checkpoint_cleaned_features.pkl')
-
-# Checkpoint final (pronto para Part 2)
-loader.save_checkpoint('checkpoint_part1_complete.pkl')
-
-# Carregar depois
-loader = DataLoader_IA.load_checkpoint('checkpoint_part1_complete.pkl')
+from Project_Code.PythonCode.Util.DataLoader import DataLoader
+loader = DataLoader.load_checkpoint("DataSet/checkpoint_part1_complete.pkl")
 ```
 
-## Responsabilidades de Cada Classe
+## Notes
 
-| Classe | Responsabilidade | Status |
-|--------|------------------|--------|
-| `DataLoader_IA` | Carga CSV + split train/test | ✅ Refatorizado |
-| `FlightDataCleaner_IA` | Remove data leakage + outliers | ✅ Expandido |
-| `FlightFeatureEngineer_IA` | Gera 20 features + normaliza | ✅ Expandido |
-| `FlightEDA_IA` | EDA + PCA + UMAP | ✅ Expandido |
-| `DataVisualization_IA` | Gera gráficos adicionais | ✅ Expandido |
-| `HypothesisTesting` | Testes estatísticos | ✅ NOVO |
-
-## Part 2: Ready (Phases 4-6)
-
-A arquitetura Part 1 está preparada para Part 2:
-
-- ✅ Features normalizadas (StandardScaler)
-- ✅ Train/test split realizado
-- ✅ Checkpoints salvos
-- ✅ Variável alvo em 2 formatos (ARR_DELAY para regressão, DELAY_CLASS para classificação)
-
-### Próximas Etapas (Part 2):
-1. **Model Building (Phase 4)**
-   - kNN from scratch (numpy)
-   - Supervised Learning (SKlearn: Regressão Linear, Random Forest, etc.)
-   - Ensemble Models (Bagging, Boosting)
-   - Deep Learning (TensorFlow/PyTorch)
-   - Clustering (K-Means, DBSCAN)
-
-2. **Model Evaluation (Phase 5)**
-   - Cross-validation
-   - Métricas apropriadas
-   - Comparação de modelos
-
-3. **Operationalization (Phase 6)**
-   - Deployment
-   - Relatório final
-   - Apresentação
-
-## Notas Importantes
-
-### Features Seguras (Sem Data Leakage)
-✅ Usadas no projeto:
-- FL_DATE, CRS_DEP_TIME, CRS_ARR_TIME
-- DISTANCE, CRS_ELAPSED_TIME
-- AIRLINE_CODE, ORIGIN, DEST
-
-❌ Removidas (Data Leakage):
-- DEP_TIME, ARR_TIME (tempos reais)
-- DEP_DELAY (diretamente relacionado com ARR_DELAY)
-- DELAY_DUE_* (causas do atraso, pós-evento)
-- AIR_TIME, TAXI_*, WHEELS_* (pós-voo)
-
-### Split Strategy
-- **Aleatório (Part 1)**: 80/20 com `random_state=42`
-- **Temporal (Part 2 - recomendado)**: Usar data (FL_DATE) para validação realista
-
-### Normalização
-- **StandardScaler** aplicado após feature engineering
-- Preserva escalas originais para EDA e testes estatísticos (não requerem normalização)
-
-## Logging
-
-Todo o pipeline é registrado em `pipeline_part1.log`:
-
-```bash
-tail -f pipeline_part1.log  # Monitorar em tempo real
-```
+- The codebase currently targets Part 1 workflow.
+- Existing outputs may include legacy filenames from previous runs.
+- For Part 2, this project is ready to extend with model training and evaluation modules.
 
 ## Troubleshooting
 
-### Erro: "Dataset não encontrado"
-```bash
-# Garantir que o arquivo está em:
+### Dataset not found
+Ensure this file exists:
+
+```text
 DataSet/flights_sample_3m.csv
 ```
 
-### Erro: "umap-learn não instalado"
+### UMAP not installed
+Install optional dependency:
+
 ```bash
 pip install umap-learn
-# Ou, o código fallback para t-SNE automaticamente
 ```
 
-### Memória insuficiente
-```python
-# Carregar amostra no main_IA.py:
-data_train, data_test, _ , _ = loader.load_data(nrows=500000)  # 500k linhas
-```
+If UMAP is unavailable, the EDA module falls back to t-SNE.
 
-## Contribuições
+## License
 
-Este projeto segue o padrão de separação de responsabilidades:
-- Cada classe tem uma responsabilidade clara
-- Fácil estender para Part 2
-- Documentação inline completa
-
-## Licença
-
-Projeto acadêmico - Data Science & Machine Learning (2024)
-
----
-
-**Última Atualização**: 2024-03-18
-**Status**: Part 1 (Phases 1-3) Completa ✅
-
+Academic project for Data Science and Machine Learning coursework.
