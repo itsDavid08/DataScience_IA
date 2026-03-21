@@ -80,18 +80,6 @@ class FlightFeatureEngineer:
 
         print(f"   ✓ 3 features de interação criadas")
 
-        # Feature 20: Variável de classificação (OBRIGATÓRIA no guião)
-        print("\n5. Criando variável de classificação (DELAY_CLASS)...")
-        conditions = [
-            (self.data['ARR_DELAY'] < 15),
-            (self.data['ARR_DELAY'] >= 15) & (self.data['ARR_DELAY'] <= 30),
-            (self.data['ARR_DELAY'] > 30)
-        ]
-        choices = ['On-time', 'Short delay', 'Long delay']
-        self.data['DELAY_CLASS'] = np.select(conditions, choices, default='Unknown')
-
-        print(f"   ✓ Variável DELAY_CLASS criada (3 classes)")
-
         # Remover FL_DATE (não é feature, é apenas usada para extrair features temporais)
         self.data = self.data.drop(columns=['FL_DATE'], errors='ignore')
 

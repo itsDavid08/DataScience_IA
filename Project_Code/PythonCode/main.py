@@ -104,6 +104,9 @@ def main() -> None:
     logger.info("Clean shape: %s", df_clean.shape)
     numeric_missing = int(df_clean.select_dtypes(include=["number"]).isnull().sum().sum())
     logger.info("Numeric missing values after cleaning: %s", numeric_missing)
+    logger.info("[STEP 3] Creating classification target (DELAY_CLASS)...")
+    df_clean = cleaner.classify_target()
+    logger.info("DELAY_CLASS created successfully.")
 
 
     ############################################################

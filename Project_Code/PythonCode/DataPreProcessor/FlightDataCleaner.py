@@ -151,7 +151,7 @@ class FlightDataCleaner:
         self.data = self.df
         return self.df
 
-    def remove_data_leak_cols(self) -> None:
+    def remove_data_leak_cols(self) -> pd.DataFrame:
         """Drop post-outcome and leakage-prone columns from the dataset.
 
         Inputs:
@@ -180,6 +180,16 @@ class FlightDataCleaner:
             "DIVERTED",
         ]
         self.df = self.df.drop(columns=leakage_cols, errors="ignore")
+
+        return self.df
+
+    def remove_cancel_diverted(self):
+        cols = [
+            "CANCELLED",
+            "CANCELLATION_CODE",
+            "DIVERTED"
+        ]
+        self.df = self.df.drop(columns=cols, errors="ignore")
         self.data = self.df
 
 
@@ -300,6 +310,20 @@ class FlightDataCleaner:
             f"{positive_count} zeros{replacement_note}"
         )
 
+    def classify_target(self):
+        conditions = [
+            (self.df['ARR_DELAY'] < 15),
+            (self.df['ARR_DELAY'] >= 15) & (self.df['ARR_DELAY'] <= 30),
+            (self.df['ARR_DELAY'] > 30)
+        ]
+
+        choices = ['On-time', 'Short delay', 'Long delay']
+
+        self.df['DELAY_CLASS'] = np.select(conditions, choices, default='Unknown')
+
+        return self.df
+
+
     def load_and_clean(self, nrows=None, random_state: int = 42):
         """Run the end-to-end cleaning pipeline and return cleaned data.
 
@@ -347,10 +371,12 @@ class FlightDataCleaner:
         initial_rows = len(self.df)
         self.remove_cancelled_diverted()
         self.data = self.df
+        self.remove_cancel_diverted()
+        self.data = self.df
         removed = initial_rows - len(self.df)
         print(f"   ✓ Removidos {removed} voos (cancelados/desviados)")
 
-        print("\n3. A remover colunas com data leakage...")
+        #print("\n3. A remover colunas com data leakage...")
         cols_before = self.df.shape[1]
         #self.remove_data_leak_cols()
         #self.data = self.df
@@ -379,7 +405,6 @@ class FlightDataCleaner:
         self.df = self.df.drop(columns=redundant_cols, errors="ignore")
         self.data = self.df
         print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas redundantes")
-
 
 
         print("\n" + "=" * 60)
