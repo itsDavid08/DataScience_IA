@@ -54,28 +54,12 @@ class DataLoader:
 
         try:
             import kagglehub
-            from kagglehub import KaggleDatasetAdapter
         except ImportError as exc:
             raise ImportError(
-                "Missing dependency 'kagglehub'. Install it with: pip install kagglehub[pandas-datasets]"
+                "Missing dependency 'kagglehub'. Install it with: pip install kagglehub"
             ) from exc
 
-        # Strategy 1: Load directly as pandas using a concrete filename with extension.
-        # We use the local target filename as the requested remote file.
-        try:
-            downloaded_df = kagglehub.load_dataset(
-                KaggleDatasetAdapter.PANDAS,
-                self._kaggle_dataset,
-                dataset_path.name,  # e.g. flights_sample_3m.csv
-            )
-            if downloaded_df is not None and not downloaded_df.empty:
-                downloaded_df.to_csv(dataset_path, index=False)
-                print(f"Dataset downloaded and saved to: {dataset_path}")
-                return
-        except Exception:
-            pass
-
-        # Strategy 2 (fallback): Download dataset files and pick a CSV.
+        # Official KaggleHub flow: download dataset files, then copy target CSV locally.
         try:
             downloaded_dir = Path(kagglehub.dataset_download(self._kaggle_dataset))
             csv_files = list(downloaded_dir.rglob("*.csv"))
@@ -134,6 +118,41 @@ class DataLoader:
             )
             self.target_train = None
             self.target_test = None
+
+        return self.data_train, self.data_test, self.target_train, self.target_test
+
+    def split_data(self, target_column='ARR_DELAY'):
+        """Split already-loaded data into train/test sets.
+
+        This method performs train/test splitting on data that has already been
+        cleaned. Use this when data has been preprocessed and is ready for splitting.
+
+        Args:
+            target_column (str): Name of the target column (default: 'ARR_DELAY').
+
+        Returns:
+            tuple: (data_train, data_test, target_train, target_test)
+
+        Raises:
+            ValueError: If self.data is empty or None.
+            ValueError: If target_column is not found in the data.
+        """
+        if self.data is None or self.data.empty:
+            raise ValueError("Data is not loaded. Load data first using load_data() or by setting self.data.")
+
+        if target_column not in self.data.columns:
+            raise ValueError(f"Target column '{target_column}' not found in data.")
+
+        # Separate features and target
+        X = self.data.drop(columns=[target_column])
+        y = self.data[target_column]
+
+        # Perform train/test split
+        self.data_train, self.data_test, self.target_train, self.target_test = train_test_split(
+            X, y, test_size=self.test_size, random_state=self.random_state
+        )
+
+        print(f"Data split completed: {self.data_train.shape[0]} train × {self.data_test.shape[0]} test")
 
         return self.data_train, self.data_test, self.target_train, self.target_test
 

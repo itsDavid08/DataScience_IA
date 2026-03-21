@@ -182,24 +182,6 @@ class FlightDataCleaner:
         self.df = self.df.drop(columns=leakage_cols, errors="ignore")
         self.data = self.df
 
-    def save(self, filename: str) -> None:
-        """Save the current dataframe to disk as CSV or XLSX.
-
-        Args:
-            filename: Output file path ending in `.csv` or `.xlsx`.
-
-        Returns:
-            None.
-
-        Raises:
-            ValueError: If `filename` extension is not supported.
-        """
-        if filename.endswith(".csv"):
-            self.df.to_csv(filename, index=False)
-        elif filename.endswith(".xlsx"):
-            self.df.to_excel(filename, index=False)
-        else:
-            raise ValueError("Unsupported file format. Use .csv or .xlsx")
 
     def _handle_outliers_and_nans(self) -> None:
         """Treat outliers with IQR and impute numeric missing values with mean.
