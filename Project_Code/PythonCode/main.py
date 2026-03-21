@@ -80,6 +80,11 @@ def main() -> None:
     logger.info("Dataset path: %s", dataset_path)
     logger.info("Output dir: %s", output_dir)
 
+
+    ############################################################
+    ##                 DATA LOADING AND CLEANSING             ##
+    ############################################################
+
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 2: DATA LOADING AND CLEANSING")
     logger.info("=" * 80)
@@ -95,9 +100,58 @@ def main() -> None:
     logger.info("[STEP 2] Cleaning raw data...")
     cleaner = FlightDataCleaner(file_path=str(dataset_path))
     df_clean = cleaner.load_and_clean(nrows=args.nrows)
+    df_clean.to_csv("../../DataSet/cleaned_flight_data.csv", index=False)
     logger.info("Clean shape: %s", df_clean.shape)
     numeric_missing = int(df_clean.select_dtypes(include=["number"]).isnull().sum().sum())
     logger.info("Numeric missing values after cleaning: %s", numeric_missing)
+    logger.info("[STEP 3] Creating classification target (DELAY_CLASS)...")
+    df_clean = cleaner.classify_target()
+    logger.info("DELAY_CLASS created successfully.")
+
+
+    ############################################################
+    ##                          EDA                           ##
+    ############################################################
+
+    logger.info("\n" + "=" * 80)
+    logger.info("PHASE 4: EDA AND DIMENSIONALITY REDUCTION")
+    logger.info("=" * 80)
+
+    logger.info("[STEP 7] Running full EDA...")
+    eda = FlightEDA(df_clean, target_col="ARR_DELAY", output_dir=output_dir, group_col="DELAY_CLASS")
+    eda_report = eda.perform_eda()
+    logger.info("Missing values total: %s", int(eda_report["quality"]["missing_values"].sum()))
+    logger.info("Duplicate rows: %s", int(eda_report["quality"]["duplicate_count"]))
+
+    logger.info("[STEP 8] Running PCA...")
+    pca_components = eda.run_pca(n_components=2, explained_variance_threshold=0.8)
+    logger.info("PCA shape: %s", pca_components.shape)
+
+    if not args.skip_umap_tsne:
+        logger.info("[STEP 9] Running UMAP/t-SNE...")
+        umap_components = eda.run_umap_or_tsne(n_components=2, use_umap=True)
+        logger.info("UMAP/t-SNE shape: %s", umap_components.shape)
+
+    logger.info("[STEP 10] Generating additional visual diagnostics...")
+    viz = DataVisualization(df_clean, output_dir=output_dir)
+    viz.plot_heatmap_top_correlations(top_n=20)
+
+    if "DELAY_CLASS" in df_clean.columns:
+        focus_cols = ["DISTANCE", "CRS_ELAPSED_TIME", "PLANNED_SPEED_MPM", "ARR_DELAY"]
+        viz.plot_grouped_feature_distributions(
+            columns=focus_cols,
+            group_col="DELAY_CLASS",
+            filename="viz_grouped_distributions_delay_class.png",
+        )
+        viz.plot_grouped_boxplots(
+            columns=focus_cols,
+            group_col="DELAY_CLASS",
+            filename="viz_grouped_boxplots_delay_class.png",
+        )
+
+    ############################################################
+    ##                  Feature Engineering                   ##
+    ############################################################
 
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 3: FEATURE ENGINEERING")
@@ -122,62 +176,37 @@ def main() -> None:
     loader.save_checkpoint(str(checkpoint_clean_path))
 
     logger.info("\n" + "=" * 80)
-    logger.info("PHASE 4: EDA AND DIMENSIONALITY REDUCTION")
-    logger.info("=" * 80)
-
-    logger.info("[STEP 7] Running full EDA...")
-    eda = FlightEDA(df_features, target_col="ARR_DELAY", output_dir=output_dir, group_col="DELAY_CLASS")
-    eda_report = eda.perform_eda()
-    logger.info("Missing values total: %s", int(eda_report["quality"]["missing_values"].sum()))
-    logger.info("Duplicate rows: %s", int(eda_report["quality"]["duplicate_count"]))
-
-    logger.info("[STEP 8] Running PCA...")
-    pca_components = eda.run_pca(n_components=2, explained_variance_threshold=0.8)
-    logger.info("PCA shape: %s", pca_components.shape)
-
-    if not args.skip_umap_tsne:
-        logger.info("[STEP 9] Running UMAP/t-SNE...")
-        umap_components = eda.run_umap_or_tsne(n_components=2, use_umap=True)
-        logger.info("UMAP/t-SNE shape: %s", umap_components.shape)
-
-    logger.info("[STEP 10] Generating additional visual diagnostics...")
-    viz = DataVisualization(df_features, output_dir=output_dir)
-    viz.plot_heatmap_top_correlations(top_n=20)
-
-    if "DELAY_CLASS" in df_features.columns:
-        focus_cols = ["DISTANCE", "CRS_ELAPSED_TIME", "PLANNED_SPEED_MPM", "ARR_DELAY"]
-        viz.plot_grouped_feature_distributions(
-            columns=focus_cols,
-            group_col="DELAY_CLASS",
-            filename="viz_grouped_distributions_delay_class.png",
-        )
-        viz.plot_grouped_boxplots(
-            columns=focus_cols,
-            group_col="DELAY_CLASS",
-            filename="viz_grouped_boxplots_delay_class.png",
-        )
-
-    logger.info("\n" + "=" * 80)
     logger.info("PHASE 5: HYPOTHESIS TESTING AND FINAL CHECKPOINT")
     logger.info("=" * 80)
 
     if not args.skip_hypothesis:
         logger.info("[STEP 11] Running statistical tests...")
+
+
         hypothesis_tester = HypothesisTester(
             data=df_features,
-            labels=df_features["DELAY_CLASS"],
             target_col="DELAY_CLASS",
             verbose=False,
         )
+
         summary_report = hypothesis_tester.generate_summary_report()
+
+        logger.info("   -> Testing Hypothesis: Time of Day Impact...")
+        tester_time = HypothesisTester(data=df_features, target_col='TIME_PERIOD')
+        summary_report['time_period_impact'] = tester_time.perform_kruskal_wallis_test(columns=['DEP_DELAY'])
+
+        logger.info("   -> Testing Hypothesis: Airline Systematic Delays...")
+        # Note: Ensure 'AIRLINE' or 'AIRLINE_ID' is in your df_features
+        tester_airline = HypothesisTester(data=df_features, target_col='AIRLINE')
+        summary_report['airline_systemic_delays'] = tester_airline.perform_kruskal_wallis_test(columns=['ARR_DELAY'])
 
         logger.info("[STEP 12] Exporting statistical reports...")
         for test_name, results_df in summary_report.items():
-            if results_df is None:
+            if results_df is None or results_df.empty:
                 continue
-            out_csv = output_dir / f"hypothesis_testing_{test_name}.csv"
+            out_csv = output_dir / f"hypothesis_test_{test_name}.csv"
             results_df.to_csv(out_csv, index=False)
-            logger.info("Report saved: %s", out_csv.name)
+            logger.info(f"Report saved: {out_csv.name}")
 
     logger.info("[STEP 13] Saving final checkpoint...")
     loader.data = df_features

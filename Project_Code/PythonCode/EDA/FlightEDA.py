@@ -51,8 +51,9 @@ class FlightEDA:
             self.numeric_cols.remove(target_col)
 
         self.group_col = group_col if group_col in self.data.columns else None
+
         if self.group_col is None:
-            self.group_col = self._create_fallback_group_col()
+            print("Aviso: group_col não encontrado. EDA agrupada será ignorada.")
 
         self.viz = DataVisualization(
             data=self.data,
@@ -60,24 +61,6 @@ class FlightEDA:
             target_col=self.target_col,
             output_dir=self.output_dir,
         )
-
-    def _create_fallback_group_col(self):
-        """Create quantile-based fallback groups when ``group_col`` is absent.
-
-        Returns:
-            str | None: Name of the generated fallback column or ``None``.
-        """
-        if self.target_col in self.data.columns and pd.api.types.is_numeric_dtype(self.data[self.target_col]):
-            fallback_col = '__TARGET_QUANTILE_GROUP__'
-            quantile_labels = ['low_delay', 'mid_delay', 'high_delay']
-            self.data[fallback_col] = pd.qcut(
-                self.data[self.target_col],
-                q=3,
-                labels=quantile_labels,
-                duplicates='drop'
-            )
-            return fallback_col
-        return None
 
     def describe_variables(self):
         """Compute and print descriptive statistics globally and by group.
@@ -323,36 +306,42 @@ class FlightEDA:
         Returns:
             np.ndarray: PCA transformed matrix.
         """
+
         print("\n" + "=" * 60)
-        print("EXECUTANDO PCA (Análise de Componentes Principais)")
+        print("EXECUTANDO PCA")
         print("=" * 60)
 
         if n_components < 2:
-            raise ValueError('n_components deve ser >= 2 para visualização 2D.')
+            raise ValueError("n_components deve ser >= 2 para visualização 2D.")
 
-        df = self.data[self.numeric_cols + [self.target_col]].dropna()
-        X = df[self.numeric_cols]
-        y = df[self.target_col]
+        # --- Features only ---
+        df = self.data[self.numeric_cols].dropna()
+        X = df
 
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
-        pca_full = PCA()
-        pca_full.fit(X_scaled)
-
-        cumsum_var = np.cumsum(pca_full.explained_variance_ratio_)
-        n_components_auto = np.argmax(cumsum_var >= explained_variance_threshold) + 1
-        n_components_auto = int(n_components_auto)
-
-        print(f"\nComponentes PCA necessários para {explained_variance_threshold * 100}% variância: {n_components_auto}")
-        print(f"Variância explicada (primeiros {min(5, n_components_auto)} componentes):")
-        for i in range(min(5, n_components_auto)):
-            print(f"  PC{i + 1}: {pca_full.explained_variance_ratio_[i] * 100:.2f}%")
-
+        # --- Fit PCA ---
         pca = PCA(n_components=n_components)
         pca_result = pca.fit_transform(X_scaled)
 
-        print("\n✓ PCA executado e visualizado: eda_pca_2d.png")
+        # --- Labels for visualization ---
+        if "DELAY_CLASS" in self.data.columns:
+            labels = self.data.loc[df.index, "DELAY_CLASS"].astype("category").cat.codes
+        else:
+            labels = self.data.loc[df.index, self.target_col]
+
+        # --- Plot ---
+        self.viz.plot_reduction_scatter(
+            components=pca_result,
+            labels=labels,
+            method_name="PCA",
+            x_label="Dimensão 1",
+            y_label="Dimensão 2",
+            filename="eda_pca_2d.png",
+        )
+
+        print("\n✓ PCA executado e visualizado")
         print("=" * 60 + "\n")
 
         return pca_result
@@ -368,41 +357,55 @@ class FlightEDA:
             np.ndarray: Nonlinear embedding matrix.
         """
         print("\n" + "=" * 60)
-        if use_umap and HAS_UMAP:
-            print("EXECUTANDO UMAP (Análise de Dimensionalidade Não-Linear)")
-        else:
-            print("EXECUTANDO t-SNE (Análise de Dimensionalidade Não-Linear - Fallback)")
+        print("EXECUTANDO UMAP / t-SNE")
         print("=" * 60)
 
-        df = self.data[self.numeric_cols + [self.target_col]].dropna()
-        X = df[self.numeric_cols]
-        y = df[self.target_col]
+        # --- Features only ---
+        df = self.data[self.numeric_cols].dropna()
+        X = df
 
         scaler = StandardScaler()
         X_scaled = scaler.fit_transform(X)
 
+        # --- Reduce ---
         if use_umap and HAS_UMAP:
-            print("\nAplicando UMAP...")
             import umap as umap_module
-            reducer = umap_module.UMAP(n_components=n_components, random_state=42, n_neighbors=15)
-            result = reducer.fit_transform(X_scaled)
-            method_name = 'UMAP'
-        else:
-            print("\nAplicando t-SNE (UMAP não disponível)...")
-            reducer = TSNE(n_components=n_components, random_state=42, perplexity=30)
-            result = reducer.fit_transform(X_scaled)
-            method_name = 't-SNE'
 
+            print("\nAplicando UMAP...")
+            reducer = umap_module.UMAP(
+                n_components=n_components,
+                random_state=42,
+                n_neighbors=15
+            )
+            result = reducer.fit_transform(X_scaled)
+            method_name = "UMAP"
+        else:
+            print("\nAplicando t-SNE...")
+            reducer = TSNE(
+                n_components=n_components,
+                random_state=42,
+                perplexity=30
+            )
+            result = reducer.fit_transform(X_scaled)
+            method_name = "t-SNE"
+
+        # --- Labels ---
+        if "DELAY_CLASS" in self.data.columns:
+            labels = self.data.loc[df.index, "DELAY_CLASS"].astype("category").cat.codes
+        else:
+            labels = self.data.loc[df.index, self.target_col]
+
+        # --- Plot ---
         self.viz.plot_reduction_scatter(
             components=result,
-            labels=y,
+            labels=labels,
             method_name=method_name,
-            x_label='Dimensão 1',
-            y_label='Dimensão 2',
+            x_label="Dimensão 1",
+            y_label="Dimensão 2",
             filename=f"eda_{method_name.lower()}_2d.png",
         )
 
-        print(f"\n✓ {method_name} executado e visualizado: eda_{method_name.lower()}_2d.png")
+        print(f"\n✓ {method_name} executado e visualizado")
         print("=" * 60 + "\n")
 
         return result

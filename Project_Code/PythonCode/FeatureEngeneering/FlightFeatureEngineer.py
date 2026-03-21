@@ -40,15 +40,24 @@ class FlightFeatureEngineer:
         self.data['IS_WEEKEND'] = (self.data['DAY_OF_WEEK'] >= 5).astype(int)
         self.data['IS_HOLIDAY_SEASON'] = self.data['MONTH'].apply(lambda x: 1 if x in [7, 8, 12] else 0)
 
-        # Feature 8: Hora de partida
+        # Feature 8-11: Hora de partida
         self.data['DEP_HOUR'] = (self.data['CRS_DEP_TIME'] // 100).astype(int)
         self.data['MORNING_FLIGHT'] = self.data['DEP_HOUR'].apply(lambda x: 1 if 6 <= x <= 11 else 0)
         self.data['AFTERNOON_FLIGHT'] = self.data['DEP_HOUR'].apply(lambda x: 1 if 12 <= x <= 17 else 0)
         self.data['NIGHT_FLIGHT'] = self.data['DEP_HOUR'].apply(lambda x: 1 if x >= 18 or x < 6 else 0)
 
+        # Feature 12: Periodo do dia
+        conditions = [
+            (self.data['MORNING_FLIGHT'] == 1),
+            (self.data['AFTERNOON_FLIGHT'] == 1),
+            (self.data['NIGHT_FLIGHT'] == 1)
+        ]
+        choices = ['Morning', 'Afternoon', 'Night']
+        self.data['TIME_PERIOD'] = np.select(conditions, choices, default='Other')
+
         print(f"   ✓ {10} features temporais criadas")
 
-        # Feature 11-13: Rota e velocidade
+        # Feature 13-16: Rota e velocidade
         print("\n2. Processando features de rota...")
         self.data['ROUTE'] = self.data['ORIGIN'] + "_" + self.data['DEST']
         self.data['ROUTE_FREQUENCY'] = self.data['ROUTE'].map(self.data['ROUTE'].value_counts())
@@ -56,7 +65,7 @@ class FlightFeatureEngineer:
 
         print(f"   ✓ 3 features de rota criadas")
 
-        # Feature 14-16: Categorização de características
+        # Feature 16-19: Categorização de características
         print("\n3. Processando features de categorização...")
         self.data['DISTANCE_CAT'] = pd.cut(self.data['DISTANCE'],
                                            bins=[0, 500, 1500, 10000],
@@ -72,25 +81,13 @@ class FlightFeatureEngineer:
 
         print(f"   ✓ 3 features de categorização criadas")
 
-        # Feature 17-19: Interações e polinômios baixo grau
+        # Feature 19-21: Interações e polinômios baixo grau
         print("\n4. Processando features de interação...")
         self.data['DISTANCE_x_ELAPSED_TIME'] = self.data['DISTANCE'] * self.data['CRS_ELAPSED_TIME']
         self.data['DISTANCE_POW2'] = self.data['DISTANCE'] ** 2
         self.data['ELAPSED_TIME_POW2'] = self.data['CRS_ELAPSED_TIME'] ** 2
 
         print(f"   ✓ 3 features de interação criadas")
-
-        # Feature 20: Variável de classificação (OBRIGATÓRIA no guião)
-        print("\n5. Criando variável de classificação (DELAY_CLASS)...")
-        conditions = [
-            (self.data['ARR_DELAY'] < 15),
-            (self.data['ARR_DELAY'] >= 15) & (self.data['ARR_DELAY'] <= 30),
-            (self.data['ARR_DELAY'] > 30)
-        ]
-        choices = ['On-time', 'Short delay', 'Long delay']
-        self.data['DELAY_CLASS'] = np.select(conditions, choices, default='Unknown')
-
-        print(f"   ✓ Variável DELAY_CLASS criada (3 classes)")
 
         # Remover FL_DATE (não é feature, é apenas usada para extrair features temporais)
         self.data = self.data.drop(columns=['FL_DATE'], errors='ignore')
