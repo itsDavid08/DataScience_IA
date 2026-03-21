@@ -51,8 +51,9 @@ class FlightEDA:
             self.numeric_cols.remove(target_col)
 
         self.group_col = group_col if group_col in self.data.columns else None
+
         if self.group_col is None:
-            self.group_col = self._create_fallback_group_col()
+            print("Aviso: group_col não encontrado. EDA agrupada será ignorada.")
 
         self.viz = DataVisualization(
             data=self.data,
@@ -60,24 +61,6 @@ class FlightEDA:
             target_col=self.target_col,
             output_dir=self.output_dir,
         )
-
-    def _create_fallback_group_col(self):
-        """Create quantile-based fallback groups when ``group_col`` is absent.
-
-        Returns:
-            str | None: Name of the generated fallback column or ``None``.
-        """
-        if self.target_col in self.data.columns and pd.api.types.is_numeric_dtype(self.data[self.target_col]):
-            fallback_col = '__TARGET_QUANTILE_GROUP__'
-            quantile_labels = ['low_delay', 'mid_delay', 'high_delay']
-            self.data[fallback_col] = pd.qcut(
-                self.data[self.target_col],
-                q=3,
-                labels=quantile_labels,
-                duplicates='drop'
-            )
-            return fallback_col
-        return None
 
     def describe_variables(self):
         """Compute and print descriptive statistics globally and by group.
