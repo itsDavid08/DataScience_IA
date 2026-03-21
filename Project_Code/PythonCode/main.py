@@ -80,6 +80,11 @@ def main() -> None:
     logger.info("Dataset path: %s", dataset_path)
     logger.info("Output dir: %s", output_dir)
 
+
+    ############################################################
+    ##                 DATA LOADING AND CLEANSING             ##
+    ############################################################
+
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 2: DATA LOADING AND CLEANSING")
     logger.info("=" * 80)
@@ -95,31 +100,15 @@ def main() -> None:
     logger.info("[STEP 2] Cleaning raw data...")
     cleaner = FlightDataCleaner(file_path=str(dataset_path))
     df_clean = cleaner.load_and_clean(nrows=args.nrows)
+    df_clean.to_csv("DataSet/cleaned_flight_data.csv", index=False)
     logger.info("Clean shape: %s", df_clean.shape)
     numeric_missing = int(df_clean.select_dtypes(include=["number"]).isnull().sum().sum())
     logger.info("Numeric missing values after cleaning: %s", numeric_missing)
 
-    logger.info("\n" + "=" * 80)
-    logger.info("PHASE 3: FEATURE ENGINEERING")
-    logger.info("=" * 80)
 
-    logger.info("[STEP 3] Generating engineered features...")
-    engineer = FlightFeatureEngineer(df_clean)
-    df_features = engineer.generate_features()
-
-    logger.info("[STEP 4] Encoding categorical variables...")
-    df_features = engineer.encode_categorical()
-
-    logger.info("[STEP 5] Normalizing numeric features...")
-    df_features = engineer.normalize_features()
-    logger.info("Features shape: %s", df_features.shape)
-    logger.info("Total columns: %s", len(df_features.columns))
-    logger.info("DELAY_CLASS present: %s", "DELAY_CLASS" in df_features.columns)
-
-    logger.info("[STEP 6] Saving cleaned+features checkpoint...")
-    loader.data = df_features
-    checkpoint_clean_path = dataset_path.parent / "checkpoint_cleaned_features.pkl"
-    loader.save_checkpoint(str(checkpoint_clean_path))
+    ############################################################
+    ##                          EDA                           ##
+    ############################################################
 
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 4: EDA AND DIMENSIONALITY REDUCTION")
@@ -156,6 +145,32 @@ def main() -> None:
             group_col="DELAY_CLASS",
             filename="viz_grouped_boxplots_delay_class.png",
         )
+
+    ############################################################
+    ##                  Feature Engineering                   ##
+    ############################################################
+
+    logger.info("\n" + "=" * 80)
+    logger.info("PHASE 3: FEATURE ENGINEERING")
+    logger.info("=" * 80)
+
+    logger.info("[STEP 3] Generating engineered features...")
+    engineer = FlightFeatureEngineer(df_clean)
+    df_features = engineer.generate_features()
+
+    logger.info("[STEP 4] Encoding categorical variables...")
+    df_features = engineer.encode_categorical()
+
+    logger.info("[STEP 5] Normalizing numeric features...")
+    df_features = engineer.normalize_features()
+    logger.info("Features shape: %s", df_features.shape)
+    logger.info("Total columns: %s", len(df_features.columns))
+    logger.info("DELAY_CLASS present: %s", "DELAY_CLASS" in df_features.columns)
+
+    logger.info("[STEP 6] Saving cleaned+features checkpoint...")
+    loader.data = df_features
+    checkpoint_clean_path = dataset_path.parent / "checkpoint_cleaned_features.pkl"
+    loader.save_checkpoint(str(checkpoint_clean_path))
 
     logger.info("\n" + "=" * 80)
     logger.info("PHASE 5: HYPOTHESIS TESTING AND FINAL CHECKPOINT")

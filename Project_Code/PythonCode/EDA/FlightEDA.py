@@ -228,6 +228,7 @@ class FlightEDA:
         self.viz.plot_distributions()
         self.viz.plot_correlation_matrix(filename='eda_correlation_matrix.png')
         self.viz.plot_boxplots(columns=self.numeric_cols, filename='eda_boxplots.png')
+        self.viz.plot_scatter_with_regression()
         self.viz.plot_target_distribution(filename='eda_target_distribution.png')
 
         print("=" * 60)
