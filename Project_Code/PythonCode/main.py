@@ -133,10 +133,10 @@ def main() -> None:
         logger.info("UMAP/t-SNE shape: %s", umap_components.shape)
 
     logger.info("[STEP 10] Generating additional visual diagnostics...")
-    viz = DataVisualization(df_features, output_dir=output_dir)
+    viz = DataVisualization(df_clean, output_dir=output_dir)
     viz.plot_heatmap_top_correlations(top_n=20)
 
-    if "DELAY_CLASS" in df_features.columns:
+    if "DELAY_CLASS" in df_clean.columns:
         focus_cols = ["DISTANCE", "CRS_ELAPSED_TIME", "PLANNED_SPEED_MPM", "ARR_DELAY"]
         viz.plot_grouped_feature_distributions(
             columns=focus_cols,
@@ -181,21 +181,32 @@ def main() -> None:
 
     if not args.skip_hypothesis:
         logger.info("[STEP 11] Running statistical tests...")
+
+
         hypothesis_tester = HypothesisTester(
             data=df_features,
-            labels=df_features["DELAY_CLASS"],
             target_col="DELAY_CLASS",
             verbose=False,
         )
+
         summary_report = hypothesis_tester.generate_summary_report()
+
+        logger.info("   -> Testing Hypothesis: Time of Day Impact...")
+        tester_time = HypothesisTester(data=df_features, target_col='TIME_PERIOD')
+        summary_report['time_period_impact'] = tester_time.perform_kruskal_wallis_test(columns=['DEP_DELAY'])
+
+        logger.info("   -> Testing Hypothesis: Airline Systematic Delays...")
+        # Note: Ensure 'AIRLINE' or 'AIRLINE_ID' is in your df_features
+        tester_airline = HypothesisTester(data=df_features, target_col='AIRLINE')
+        summary_report['airline_systemic_delays'] = tester_airline.perform_kruskal_wallis_test(columns=['ARR_DELAY'])
 
         logger.info("[STEP 12] Exporting statistical reports...")
         for test_name, results_df in summary_report.items():
-            if results_df is None:
+            if results_df is None or results_df.empty:
                 continue
-            out_csv = output_dir / f"hypothesis_testing_{test_name}.csv"
+            out_csv = output_dir / f"hypothesis_test_{test_name}.csv"
             results_df.to_csv(out_csv, index=False)
-            logger.info("Report saved: %s", out_csv.name)
+            logger.info(f"Report saved: {out_csv.name}")
 
     logger.info("[STEP 13] Saving final checkpoint...")
     loader.data = df_features
