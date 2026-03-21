@@ -1,5 +1,13 @@
 # Data Science Project - Flight Delay Analysis and Prediction
 
+
+Students:
+- Angel David Abreu Parra - 2121422
+- Janika Maria Caroto Correia - 2119122
+
+Teacher:
+- Fábio Mendonça
+
 ## Overview
 
 This repository implements an end-to-end data pipeline for flight delay analysis using the Kaggle dataset **Flight Delay and Cancellation Dataset (2019-2023)**.
