@@ -352,9 +352,9 @@ class FlightDataCleaner:
 
         print("\n3. A remover colunas com data leakage...")
         cols_before = self.df.shape[1]
-        self.remove_data_leak_cols()
-        self.data = self.df
-        print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas com data leakage")
+        #self.remove_data_leak_cols()
+        #self.data = self.df
+        #print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas com data leakage")
 
         print("\n4. A remover nulos na variável alvo...")
         initial_rows = len(self.df)

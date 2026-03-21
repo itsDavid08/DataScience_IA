@@ -336,6 +336,18 @@ class FlightEDA:
         pca = PCA(n_components=n_components)
         pca_result = pca.fit_transform(X_scaled)
 
+        self.viz.plot_reduction_scatter(
+            components=pca_result,
+            labels=df["DELAY_CLASS"],  # or y if you prefer
+            method_name="PCA",
+            x_label="Principal Component 1",
+            y_label="Principal Component 2",
+            filename="eda_pca_2d.png",
+        )
+
+        print("\n✓ PCA executado e visualizado: eda_pca_2d.png")
+        print("=" * 60 + "\n")
+
         print("\n✓ PCA executado e visualizado: eda_pca_2d.png")
         print("=" * 60 + "\n")
 
@@ -381,8 +393,8 @@ class FlightEDA:
             components=result,
             labels=y,
             method_name=method_name,
-            x_label='Dimensão 1',
-            y_label='Dimensão 2',
+            x_label='Principal Component 1',
+            y_label='Principal Component 2',
             filename=f"eda_{method_name.lower()}_2d.png",
         )
 
