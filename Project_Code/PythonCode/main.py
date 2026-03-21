@@ -100,7 +100,7 @@ def main() -> None:
     logger.info("[STEP 2] Cleaning raw data...")
     cleaner = FlightDataCleaner(file_path=str(dataset_path))
     df_clean = cleaner.load_and_clean(nrows=args.nrows)
-    df_clean.to_csv("DataSet/cleaned_flight_data.csv", index=False)
+    df_clean.to_csv("../../DataSet/cleaned_flight_data.csv", index=False)
     logger.info("Clean shape: %s", df_clean.shape)
     numeric_missing = int(df_clean.select_dtypes(include=["number"]).isnull().sum().sum())
     logger.info("Numeric missing values after cleaning: %s", numeric_missing)
@@ -115,7 +115,7 @@ def main() -> None:
     logger.info("=" * 80)
 
     logger.info("[STEP 7] Running full EDA...")
-    eda = FlightEDA(df_features, target_col="ARR_DELAY", output_dir=output_dir, group_col="DELAY_CLASS")
+    eda = FlightEDA(df_clean, target_col="ARR_DELAY", output_dir=output_dir, group_col="DELAY_CLASS")
     eda_report = eda.perform_eda()
     logger.info("Missing values total: %s", int(eda_report["quality"]["missing_values"].sum()))
     logger.info("Duplicate rows: %s", int(eda_report["quality"]["duplicate_count"]))
