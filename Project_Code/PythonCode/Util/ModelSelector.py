@@ -70,7 +70,7 @@ class ModelSelector:
             "suitable": True,
         },
         "Logistic Regression": {
-            "model": LogisticRegression(max_iter=1000, multi_class="multinomial", solver="lbfgs"),
+            "model": LogisticRegression(max_iter=1000, solver="lbfgs"),
             "justification": (
                 "Linear probabilistic classifier. Interpretable coefficients allow understanding "
                 "which features drive delay predictions. Fast training. Suitable as a strong "
@@ -168,11 +168,17 @@ class ModelSelector:
 
         # Exclude the target, and also ARR_DELAY (the regression target).
         exclude = [self.target_col, "ARR_DELAY"]
+        feature_df = self.data.drop(columns=exclude, errors="ignore")
         feature_cols = [
-            c for c in self.data.columns
-            if c not in exclude and self.data[c].dtype != object
+            c for c in feature_df.columns
+            if pd.api.types.is_numeric_dtype(feature_df[c])
         ]
-        X = self.data[feature_cols].fillna(0)
+
+        if not feature_cols:
+            raise ValueError("No numeric feature columns found after preprocessing.")
+
+        # Force numeric conversion to avoid hidden string values in extension dtypes.
+        X = feature_df[feature_cols].apply(pd.to_numeric, errors="coerce").fillna(0.0)
         y = self.data[self.target_col]
         return X, y
 
