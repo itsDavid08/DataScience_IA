@@ -29,7 +29,6 @@ class FlightDataCleaner:
         Raises:
             ValueError: If `df` is provided and is not a pandas DataFrame.
         """
-        # Backward compatibility: allow FlightDataCleaner("path/to/file.csv").
         if isinstance(df, str) and file_path is None:
             file_path = df
             df = None
@@ -45,7 +44,6 @@ class FlightDataCleaner:
         else:
             self.df = pd.DataFrame()
 
-        # Keep `data` as a compatibility alias used by older pipeline code.
         self.data = self.df
 
     def fill_missing(
@@ -55,21 +53,13 @@ class FlightDataCleaner:
     ) -> None:
         """Fill missing values using a selected imputation strategy.
 
-        Inputs:
-            Uses `self.df` as the active dataframe.
-
         Args:
-            strategy: Imputation mode. Supported values are `mean`, `median`,
-                `mode`, and `constant`.
-            value: Constant replacement value required when
-                `strategy == "constant"`.
-
-        Returns:
-            None. The operation updates `self.df` in place or by reassignment.
+            strategy: Imputation mode — 'mean', 'median', 'mode', or 'constant'.
+            value: Constant replacement value required when strategy == 'constant'.
 
         Raises:
-            ValueError: If `strategy` is not supported.
-            ValueError: If `strategy` is `constant` and `value` is None.
+            ValueError: If strategy is not supported.
+            ValueError: If strategy is 'constant' and value is None.
         """
         valid_strategies = ["mean", "median", "mode", "constant"]
         if strategy not in valid_strategies:
@@ -98,20 +88,12 @@ class FlightDataCleaner:
     ) -> None:
         """Handle missing values by dropping rows or filling all nulls.
 
-        Inputs:
-            Uses `self.df` as the active dataframe.
-
         Args:
-            method: Missing-value action. Use `drop` to remove rows with nulls,
-                or `fill` to replace nulls with `fill_value`.
-            fill_value: Replacement value used only when `method == "fill"`.
-
-        Returns:
-            None. The method reassigns `self.df` with the transformed data.
+            method: 'drop' to remove rows with nulls, or 'fill' to replace nulls.
+            fill_value: Replacement value used only when method == 'fill'.
 
         Raises:
-            ValueError: If `method` is not `drop` or `fill`.
-            ValueError: If `method` is `fill` and `fill_value` is None.
+            ValueError: If method is not 'drop' or 'fill'.
         """
         if method not in ["drop", "fill"]:
             raise ValueError("Method must be 'drop' or 'fill'")
@@ -125,28 +107,11 @@ class FlightDataCleaner:
 
     @staticmethod
     def remove_duplicates(df: pd.DataFrame) -> pd.DataFrame:
-        """Return a dataframe copy with duplicate rows removed.
-
-        Args:
-            df: Input dataframe to deduplicate.
-
-        Returns:
-            pd.DataFrame: Dataframe without duplicated rows.
-        """
+        """Return a dataframe copy with duplicate rows removed."""
         return df.drop_duplicates()
 
     def remove_cancelled_diverted(self) -> pd.DataFrame:
-        """Remove rows flagged as canceled or diverted flights.
-
-        Inputs:
-            Expects `CANCELLED` and `DIVERTED` columns in `self.df`.
-
-        Returns:
-            pd.DataFrame: Filtered dataframe keeping only completed flights.
-
-        Side effects:
-            Updates `self.df` and syncs `self.data`.
-        """
+        """Remove rows flagged as canceled or diverted flights."""
         self.df = self.df[(self.df["CANCELLED"] == 0) & (self.df["DIVERTED"] == 0)]
         self.data = self.df
         return self.df
@@ -154,11 +119,26 @@ class FlightDataCleaner:
     def remove_data_leak_cols(self) -> pd.DataFrame:
         """Drop post-outcome and leakage-prone columns from the dataset.
 
-        Inputs:
-            Uses `self.df` and removes predefined leakage columns when present.
+        These columns are forbidden as predictors because they either encode the
+        target variable, are derived from it, or contain post-event information
+        (i.e., information only available AFTER the flight lands). Using them
+        would cause data leakage and invalidate any predictive model.
+
+        Columns removed and rationale:
+            - DEP_DELAY      : directly correlated with ARR_DELAY (post-departure info).
+            - DELAY_DUE_*    : cause-of-delay fields only populated when delay >= 15 min
+                               (derived from the target, known only post-event).
+            - ARR_TIME       : actual arrival time — only known after landing.
+            - DEP_TIME       : actual departure time — known after departure.
+            - WHEELS_OFF/ON  : recorded during the flight.
+            - TAXI_OUT/IN    : recorded during the flight.
+            - ELAPSED_TIME   : actual elapsed time — known after landing.
+            - AIR_TIME       : known only after landing.
+            - CANCELLED      : already filtered out in step 2.
+            - DIVERTED       : already filtered out in step 2.
 
         Returns:
-            None. The method reassigns `self.df` and updates `self.data`.
+            pd.DataFrame: Dataset without leakage columns.
         """
         leakage_cols = [
             "DEP_DELAY",
@@ -179,36 +159,18 @@ class FlightDataCleaner:
             "CANCELLATION_CODE",
             "DIVERTED",
         ]
+        removed = [c for c in leakage_cols if c in self.df.columns]
         self.df = self.df.drop(columns=leakage_cols, errors="ignore")
-
+        self.data = self.df
         return self.df
 
     def remove_cancel_diverted(self):
-        cols = [
-            "CANCELLED",
-            "CANCELLATION_CODE",
-            "DIVERTED"
-        ]
+        cols = ["CANCELLED", "CANCELLATION_CODE", "DIVERTED"]
         self.df = self.df.drop(columns=cols, errors="ignore")
         self.data = self.df
 
-
     def _handle_outliers_and_nans(self) -> None:
-        """Treat outliers with IQR and impute numeric missing values with mean.
-
-        Inputs:
-            Uses `self.df`. Outlier detection is applied to `DISTANCE` and
-            `CRS_ELAPSED_TIME` when those columns exist.
-
-        Processing:
-            - Computes IQR bounds per target column.
-            - Replaces outlier values with NaN.
-            - Imputes resulting NaNs using the column mean.
-            - Fills remaining numeric NaNs using per-column means.
-
-        Returns:
-            None. Updates `self.df` and `self.data`.
-        """
+        """Treat outliers with IQR and impute numeric missing values with mean."""
         cols_for_outliers = ["DISTANCE", "CRS_ELAPSED_TIME"]
 
         for col in cols_for_outliers:
@@ -226,7 +188,6 @@ class FlightDataCleaner:
                     np.nan,
                     self.df[col],
                 )
-
                 self.df[col] = self.df[col].fillna(self.df[col].mean())
                 print(f"   ✓ {col}: {outliers_count} outliers tratados")
 
@@ -242,16 +203,13 @@ class FlightDataCleaner:
         self.data = self.df
 
     def normalize_arr_delay(self) -> None:
-        """Clamp negative `ARR_DELAY` values to zero.
+        """Clamp negative ARR_DELAY values to zero.
 
-        Inputs:
-            Uses `self.df` and expects the `ARR_DELAY` column.
-
-        Returns:
-            None. Updates `self.df` and `self.data`.
+        Negative values indicate early arrivals. For the purpose of delay
+        prediction, we treat early arrivals as zero delay (on-time).
 
         Raises:
-            ValueError: If `ARR_DELAY` is not present in the dataframe.
+            ValueError: If ARR_DELAY is not present in the dataframe.
         """
         if "ARR_DELAY" not in self.df.columns:
             raise ValueError("Column 'ARR_DELAY' is required to normalize delays")
@@ -262,23 +220,75 @@ class FlightDataCleaner:
         self.data = self.df
         print(f"   ✓ {negative_count} valores negativos de ARR_DELAY convertidos para 0")
 
-    def balance_delay_dataset(self, random_state: int = 42) -> None:
-        """Balance delayed and non-delayed records for ARR_DELAY.
+    def balance_delay_dataset(self, method: str = "smote", random_state: int = 42) -> None:
+        """Balance the dataset for ARR_DELAY using SMOTE or undersampling.
 
-        The resulting dataset includes:
-            - All rows where `ARR_DELAY > 0`.
-            - The same number of rows sampled from `ARR_DELAY == 0`.
+        Three strategies are supported:
+            - 'smote'       : Synthetic Minority Over-sampling Technique (preferred).
+                              Generates synthetic samples for the minority class,
+                              preserving information from the majority class.
+            - 'oversample'  : Random oversampling (duplicates minority samples).
+            - 'undersample' : Random undersampling (reduces majority class).
 
-        Inputs:
-            Uses normalized `self.df` where negative delays were already mapped
-            to zero.
+        SMOTE is the preferred method as it avoids information loss (undersampling)
+        and overfitting from simple duplication (random oversampling).
+
+        Requires imblearn: pip install imbalanced-learn
 
         Args:
-            random_state: Seed used for deterministic sampling/shuffling.
-
-        Returns:
-            None. Reassigns `self.df` and updates `self.data`.
+            method: Balancing strategy — 'smote', 'oversample', or 'undersample'.
+            random_state: Seed for reproducibility.
         """
+        # Build binary target for balancing: delayed (>0) vs on-time (==0)
+        y_binary = (self.df["ARR_DELAY"] > 0).astype(int)
+        class_counts = y_binary.value_counts()
+        print(f"   Distribuição antes do balanceamento: {dict(class_counts)}")
+
+        if class_counts.min() == 0:
+            print("   ! Balanceamento ignorado: uma das classes está vazia.")
+            return
+
+        # Attempt imblearn-based balancing; fall back to manual undersampling.
+        try:
+            from imblearn.over_sampling import SMOTE, RandomOverSampler
+            from imblearn.under_sampling import RandomUnderSampler
+
+            # Use only numeric columns for SMOTE (it cannot handle categoricals).
+            numeric_cols = self.df.select_dtypes(include=[np.number]).columns.tolist()
+            X_numeric = self.df[numeric_cols]
+
+            if method == "smote":
+                sampler = SMOTE(random_state=random_state)
+                strategy_label = "SMOTE (oversampling sintético)"
+            elif method == "oversample":
+                sampler = RandomOverSampler(random_state=random_state)
+                strategy_label = "RandomOverSampler"
+            else:
+                sampler = RandomUnderSampler(random_state=random_state)
+                strategy_label = "RandomUnderSampler"
+
+            X_res, y_res = sampler.fit_resample(X_numeric, y_binary)
+
+            # Rebuild DataFrame from resampled indices (for non-numeric cols, use idx).
+            if hasattr(sampler, "sample_indices_"):
+                idx = sampler.sample_indices_
+                self.df = self.df.iloc[idx].reset_index(drop=True)
+            else:
+                # SMOTE creates synthetic rows — rebuild numeric cols only.
+                self.df = pd.DataFrame(X_res, columns=numeric_cols)
+
+            print(f"   ✓ Dataset balanceado com {strategy_label}")
+            print(f"   Distribuição após balanceamento: {dict(pd.Series(y_res).value_counts())}")
+
+        except ImportError:
+            print("   ! imblearn não instalado. A usar undersampling manual como fallback.")
+            print("     Instala com: pip install imbalanced-learn")
+            self._manual_undersample(random_state)
+
+        self.data = self.df
+
+    def _manual_undersample(self, random_state: int = 42) -> None:
+        """Fallback undersampling: keep all delayed rows, sample equal non-delayed."""
         positive_df = self.df[self.df["ARR_DELAY"] > 0]
         zero_df = self.df[self.df["ARR_DELAY"] == 0]
 
@@ -286,11 +296,7 @@ class FlightDataCleaner:
         zero_count = len(zero_df)
 
         if positive_count == 0 or zero_count == 0:
-            print(
-                "   ! Balanceamento ignorado: não há amostras suficientes "
-                "em uma das classes (ARR_DELAY > 0 ou ARR_DELAY == 0)"
-            )
-            self.data = self.df
+            print("   ! Balanceamento ignorado: classes insuficientes.")
             return
 
         sample_with_replacement = zero_count < positive_count
@@ -303,53 +309,43 @@ class FlightDataCleaner:
         self.df = pd.concat([positive_df, sampled_zero_df], axis=0)
         self.df = self.df.sample(frac=1.0, random_state=random_state).reset_index(drop=True)
         self.data = self.df
-
-        replacement_note = " (com reposição)" if sample_with_replacement else ""
-        print(
-            f"   ✓ Dataset balanceado: {positive_count} atrasos positivos + "
-            f"{positive_count} zeros{replacement_note}"
-        )
+        print(f"   ✓ Dataset balanceado (manual): {positive_count} delayed + {positive_count} on-time")
 
     def classify_target(self):
+        """Add DELAY_CLASS column with three classes as per project specification:
+            - 'On-time'     : ARR_DELAY < 15 minutes
+            - 'Short delay' : 15 <= ARR_DELAY <= 30 minutes
+            - 'Long delay'  : ARR_DELAY > 30 minutes
+        """
         conditions = [
             (self.df['ARR_DELAY'] < 15),
             (self.df['ARR_DELAY'] >= 15) & (self.df['ARR_DELAY'] <= 30),
             (self.df['ARR_DELAY'] > 30)
         ]
-
         choices = ['On-time', 'Short delay', 'Long delay']
-
         self.df['DELAY_CLASS'] = np.select(conditions, choices, default='Unknown')
-
         return self.df
 
-
-    def load_and_clean(self, nrows=None, random_state: int = 42):
+    def load_and_clean(self, nrows=None, random_state: int = 42, balance_method: str = "smote"):
         """Run the end-to-end cleaning pipeline and return cleaned data.
-
-        Inputs:
-            - Uses in-memory `self.df` when provided at initialization.
-            - Otherwise loads data from `self.file_path`.
-
-        Args:
-            nrows: Optional number of rows to read from CSV.
-            random_state: Seed used for deterministic balancing sampling.
 
         Pipeline steps:
             1. Load dataset (from memory or file).
             2. Remove canceled/diverted flights.
-            3. Drop leakage columns.
-            4. Drop rows with null `ARR_DELAY`.
-            5. Convert negative `ARR_DELAY` values to `0`.
-            6. Balance dataset: all positive delays + equal zero delays.
+            3. Drop leakage columns (data leakage prevention).
+            4. Drop rows with null ARR_DELAY.
+            5. Convert negative ARR_DELAY values to 0.
+            6. Balance dataset using SMOTE or fallback undersampling.
             7. Treat outliers and impute numeric nulls.
             8. Drop redundant identifier/location columns.
 
+        Args:
+            nrows: Optional number of rows to read from CSV.
+            random_state: Seed for reproducibility.
+            balance_method: Balancing strategy — 'smote', 'oversample', or 'undersample'.
+
         Returns:
             pd.DataFrame: Fully cleaned dataframe.
-
-        Raises:
-            ValueError: If no in-memory dataframe is set and `file_path` is missing.
         """
         print("=" * 60)
         print("INICIANDO PROCESSO DE LIMPEZA DE DADOS")
@@ -371,16 +367,17 @@ class FlightDataCleaner:
         initial_rows = len(self.df)
         self.remove_cancelled_diverted()
         self.data = self.df
-        self.remove_cancel_diverted()
-        self.data = self.df
         removed = initial_rows - len(self.df)
         print(f"   ✓ Removidos {removed} voos (cancelados/desviados)")
 
-        #print("\n3. A remover colunas com data leakage...")
+        # FIX: Data leakage removal is now ENABLED (was previously commented out).
+        # Columns like DEP_DELAY, ARR_TIME, TAXI_OUT, etc. are removed here to
+        # prevent the model from learning from information unavailable at flight time.
+        print("\n3. A remover colunas com data leakage...")
         cols_before = self.df.shape[1]
-        #self.remove_data_leak_cols()
-        #self.data = self.df
-        #print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas com data leakage")
+        self.remove_data_leak_cols()
+        self.data = self.df
+        print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas com data leakage")
 
         print("\n4. A remover nulos na variável alvo...")
         initial_rows = len(self.df)
@@ -392,8 +389,8 @@ class FlightDataCleaner:
         print("\n5. A converter atrasos negativos para zero...")
         self.normalize_arr_delay()
 
-        print("\n6. A balancear dataset (atrasos positivos vs zeros)...")
-        self.balance_delay_dataset(random_state=random_state)
+        print(f"\n6. A balancear dataset (método: {balance_method})...")
+        self.balance_delay_dataset(method=balance_method, random_state=random_state)
 
         print("\n7. A tratar outliers e missing values...")
         self._handle_outliers_and_nans()
@@ -405,7 +402,6 @@ class FlightDataCleaner:
         self.df = self.df.drop(columns=redundant_cols, errors="ignore")
         self.data = self.df
         print(f"   ✓ Removidas {cols_before - self.df.shape[1]} colunas redundantes")
-
 
         print("\n" + "=" * 60)
         print("LIMPEZA CONCLUÍDA!")
